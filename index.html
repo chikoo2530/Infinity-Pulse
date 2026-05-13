@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elegant 3D Counter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #070710;
+            --fg: #F0ECE3;
+            --muted: #6B6580;
+            --accent: #E8A838;
+            --accent-glow: rgba(232,168,56,0.4);
+            --positive: #4ADE80;
+            --negative: #F87171;
+            --card: rgba(255,255,255,0.03);
+            --border: rgba(232,168,56,0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 3D Canvas */
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+        #canvas-container canvas { display: block; }
+
+        /* Vignette overlay */
+        .vignette {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(7,7,16,0.75) 100%);
+        }
+
+        /* Main UI overlay */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .counter-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            pointer-events: auto;
+        }
+
+        /* Label */
+        .counter-label {
+            font-weight: 200;
+            font-size: 13px;
+            letter-spacing: 10px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        /* Ring + value container */
+        .ring-container {
+            position: relative;
+            width: clamp(220px, 32vw, 340px);
+            height: clamp(220px, 32vw, 340px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Orbital rings */
+        .ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            top: 50%; left: 50%;
+            pointer-events: none;
+        }
+
+        .ring-inner {
+            width: 88%;
+            height: 88%;
+            transform: translate(-50%, -50%);
+            animation: ringSpin 22s linear infinite;
+        }
+        .ring-inner::before {
+            content: '';
+            position: absolute;
+            top: -4px; left: 50%;
+            width: 8px; height: 8px;
+            margin-left: -4px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-glow), 0 0 24px var(--accent-glow);
+        }
+
+        .ring-outer {
+            width: 100%;
+            height: 100%;
+            transform: translate(-50%, -50%);
+            border-color: rgba(232,168,56,0.06);
+            animation: ringSpin 40s linear infinite reverse;
+        }
+        .ring-outer::after {
+            content: '';
+            position: absolute;
+            bottom: -3px; left: 50%;
+            width: 6px; height: 6px;
+            margin-left: -3px;
+            background: var(--muted);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(107,101,128,0.4);
+        }
+
+        @keyframes ringSpin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to   { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* Counter value */
+        .counter-value {
+            font-family: 'Space Mono', monospace;
+            font-weight: 700;
+            font-size: clamp(72px, 14vw, 150px);
+            line-height: 1;
+            transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        color 0.4s ease,
+                        text-shadow 0.4s ease;
+            user-select: none;
+            position: relative;
+            z-index: 2;
+        }
+
+        .counter-value.state-zero {
+            color: var(--accent);
+            text-shadow: 0 0 50px var(--accent-glow), 0 0 100px rgba(232,168,56,0.12);
+        }
+        .counter-value.state-positive {
+            color: var(--positive);
+            text-shadow: 0 0 50px rgba(74,222,128,0.4), 0 0 100px rgba(74,222,128,0.12);
+        }
+        .counter-value.state-negative {
+            color: var(--negative);
+            text-shadow: 0 0 50px rgba(248,113,113,0.4), 0 0 100px rgba(248,113,113,0.12);
+        }
+
+        .counter-value.bump-up {
+            transform: translateY(-4px) scale(1.08);
+        }
+        .counter-value.bump-down {
+            transform: translateY(4px) scale(1.08);
+        }
+
+        /* Buttons */
+        .buttons {
+            display: flex;
+            gap: 18px;
+            margin-top: 24px;
+            align-items: center;
+        }
+
+        .btn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: var(--fg);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.25s ease;
+            outline: none;
+            position: relative;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 50%;
+            background: transparent;
+            transition: background 0.25s ease;
+            z-index: -1;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: scale(1.12);
+            box-shadow: 0 0 24px rgba(232,168,56,0.12);
+        }
+        .btn:active {
+            transform: scale(0.94);
+        }
+        .btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+
+        .btn-accent {
+            border-color: rgba(232,168,56,0.3);
+            width: 68px;
+            height: 68px;
+            font-size: 22px;
+        }
+        .btn-accent:hover {
+            background: rgba(232,168,56,0.08);
+            box-shadow: 0 0 32px rgba(232,168,56,0.18);
+        }
+
+        .btn-reset {
+            width: 50px;
+            height: 50px;
+            font-size: 14px;
+            border-color: rgba(255,255,255,0.06);
+        }
+        .btn-reset:hover {
+            border-color: var(--muted);
+            color: var(--muted);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 36px;
+            left: 50%;
+            transform: translateX(-50%) translateY(16px);
+            background: rgba(15,15,25,0.85);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 10px 28px;
+            border-radius: 50px;
+            font-size: 13px;
+            letter-spacing: 2px;
+            color: var(--accent);
+            opacity: 0;
+            transition: all 0.35s ease;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .toast.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Keyboard hint */
+        .hint {
+            position: fixed;
+            bottom: 18px;
+            right: 24px;
+            font-size: 11px;
+            color: rgba(107,101,128,0.5);
+            letter-spacing: 1.5px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            .ring-inner, .ring-outer { animation: none; }
+            .counter-value { transition: color 0.4s ease, text-shadow 0.4s ease; }
+            .btn { transition: none; }
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 500px) {
+            .btn { width: 52px; height: 52px; font-size: 16px; }
+            .btn-accent { width: 58px; height: 58px; font-size: 20px; }
+            .btn-reset { width: 44px; height: 44px; font-size: 12px; }
+            .buttons { gap: 14px; }
+            .hint { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div class="vignette"></div>
+
+    <div class="overlay">
+        <div class="counter-wrapper">
+            <span class="counter-label">Counter</span>
+            <div class="ring-container">
+                <div class="ring ring-inner"></div>
+                <div class="ring ring-outer"></div>
+                <div class="counter-value state-zero" id="counter-value">0</div>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-accent" id="btn-dec" aria-label="Decrement counter">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button class="btn btn-reset" id="btn-reset" aria-label="Reset counter to zero">
+                    <i class="fas fa-rotate-left"></i>
+                </button>
+                <button class="btn btn-accent" id="btn-inc" aria-label="Increment counter">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <div class="hint">Arrow keys supported</div>
+
+    <!-- Three.js import map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        /* ========================================
+           Three.js Scene
+        ======================================== */
+
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x070710, 0.011);
+
+        const camera = new THREE.PerspectiveCamera(
+            60, window.innerWidth / window.innerHeight, 0.1, 1000
+        );
+        camera.position.z = 38;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x070710, 1);
+        container.appendChild(renderer.domElement);
+
+        /* --- Circular particle texture (no square particles) --- */
+        function makeParticleTexture() {
+            const c = document.createElement('canvas');
+            c.width = 64; c.height = 64;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.25, 'rgba(255,220,160,0.7)');
+            g.addColorStop(1, 'rgba(255,200,100,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(c);
+        }
+        const particleTex = makeParticleTexture();
+
+        /* --- Floating wireframe polyhedra --- */
+        const floaters = [];
+        const geoMakers = [
+            () => new THREE.IcosahedronGeometry(Math.max(0.5, Math.random() * 2.8), 0),
+            () => new THREE.OctahedronGeometry(Math.max(0.5, Math.random() * 2.2), 0),
+            () => new THREE.TetrahedronGeometry(Math.max(0.5, Math.random() * 2.4), 0),
+            () => new THREE.DodecahedronGeometry(Math.max(0.5, Math.random() * 1.8), 0),
+        ];
+
+        for (let i = 0; i < 28; i++) {
+            const geo = geoMakers[Math.floor(Math.random() * geoMakers.length)]();
+            const hue = 0.07 + Math.random() * 0.06;          // warm amber range
+            const lightness = 0.45 + Math.random() * 0.35;
+            const mat = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(hue, 0.75, lightness),
+                wireframe: true,
+                transparent: true,
+                opacity: 0.12 + Math.random() * 0.28,
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(
+                (Math.random() - 0.5) * 90,
+                (Math.random() - 0.5) * 55,
+                (Math.random() - 0.5) * 50 - 8
+            );
+            mesh.rotation.set(
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI
+            );
+            mesh.userData = {
+                rv: {                                                  // rotation velocities
+                    x: (Math.random() - 0.5) * 0.007,
+                    y: (Math.random() - 0.5) * 0.007,
+                    z: (Math.random() - 0.5) * 0.003,
+                },
+                floatSpd: 0.25 + Math.random() * 0.55,
+                floatAmp: 1.2 + Math.random() * 2.2,
+                phase: Math.random() * Math.PI * 2,
+                originY: mesh.position.y,
+                originX: mesh.position.x,
+            };
+            scene.add(mesh);
+            floaters.push(mesh);
+        }
+
+        /* --- Central torus accent --- */
+        const torusGeo = new THREE.TorusGeometry(4.5, 0.07, 16, 120);
+        const torusMat = new THREE.MeshBasicMaterial({
+            color: 0xE8A838,
+            transparent: true,
+            opacity: 0.35,
+        });
+        const torus = new THREE.Mesh(torusGeo, torusMat);
+        scene.add(torus);
+
+        /* --- Second torus (perpendicular) --- */
+        const torus2Geo = new THREE.TorusGeometry(6, 0.04, 16, 100);
+        const torus2Mat = new THREE.MeshBasicMaterial({
+            color: 0xE8A838,
+            transparent: true,
+            opacity: 0.12,
+        });
+        const torus2 = new THREE.Mesh(torus2Geo, torus2Mat);
+        torus2.rotation.x = Math.PI * 0.5;
+        scene.add(torus2);
+
+        /* --- Particle starfield --- */
+        const PCOUNT = 3500;
+        const pGeo = new THREE.BufferGeometry();
+        const pPos = new Float32Array(PCOUNT * 3);
+        const pCol = new Float32Array(PCOUNT * 3);
+
+        for (let i = 0; i < PCOUNT; i++) {
+            pPos[i * 3]     = (Math.random() - 0.5) * 140;
+            pPos[i * 3 + 1] = (Math.random() - 0.5) * 140;
+            pPos[i * 3 + 2] = (Math.random() - 0.5) * 140;
+            const h = 0.05 + Math.random() * 0.1;
+            const c = new THREE.Color().setHSL(h, 0.5 + Math.random() * 0.3, 0.5 + Math.random() * 0.3);
+            pCol[i * 3]     = c.r;
+            pCol[i * 3 + 1] = c.g;
+            pCol[i * 3 + 2] = c.b;
+        }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+
+        const pMat = new THREE.PointsMaterial({
+            size: 0.45,
+            map: particleTex,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.75,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        const particles = new THREE.Points(pGeo, pMat);
+        scene.add(particles);
+
+        /* --- Network constellation (small set of connected nodes) --- */
+        const NODE_N = 50;
+        const nodes = [];
+        for (let i = 0; i < NODE_N; i++) {
+            nodes.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 50,
+                (Math.random() - 0.5) * 35,
+                (Math.random() - 0.5) * 40 - 5
+            ));
+        }
+
+        // Lines between nearby nodes
+        const lineVerts = [];
+        const CONNECT_DIST = 14;
+        for (let i = 0; i < NODE_N; i++) {
+            for (let j = i + 1; j < NODE_N; j++) {
+                if (nodes[i].distanceTo(nodes[j]) < CONNECT_DIST) {
+                    lineVerts.push(nodes[i].x, nodes[i].y, nodes[i].z);
+                    lineVerts.push(nodes[j].x, nodes[j].y, nodes[j].z);
+                }
+            }
+        }
+        const lineGeo = new THREE.BufferGeometry();
+        lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0xE8A838,
+            transparent: true,
+            opacity: 0.055,
+        });
+        const networkLines = new THREE.LineSegments(lineGeo, lineMat);
+        scene.add(networkLines);
+
+        // Small glowing dots at each node
+        const dotGeo = new THREE.SphereGeometry(Math.max(0.01, 0.12), 8, 6);
+        const dotMat = new THREE.MeshBasicMaterial({
+            color: 0xE8A838,
+            transparent: true,
+            opacity: 0.35,
+        });
+        const networkGroup = new THREE.Group();
+        nodes.forEach(p => {
+            const d = new THREE.Mesh(dotGeo, dotMat);
+            d.position.copy(p);
+            networkGroup.add(d);
+        });
+        networkGroup.add(networkLines);
+        scene.add(networkGroup);
+
+        /* --- Mouse tracking --- */
+        let mouseX = 0, mouseY = 0;
+        let smoothMX = 0, smoothMY = 0;
+        document.addEventListener('mousemove', e => {
+            mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+            mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+        });
+
+        /* --- Pulse state --- */
+        let pulseScale = 1;
+        let pulseTarget = 1;
+
+        /* --- Animation loop --- */
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Smooth mouse
+            smoothMX += (mouseX - smoothMX) * 0.025;
+            smoothMY += (mouseY - smoothMY) * 0.025;
+
+            // Floaters
+            floaters.forEach(m => {
+                const u = m.userData;
+                m.rotation.x += u.rv.x;
+                m.rotation.y += u.rv.y;
+                m.rotation.z += u.rv.z;
+                m.position.y = u.originY + Math.sin(t * u.floatSpd + u.phase) * u.floatAmp;
+                m.position.x = u.originX + Math.cos(t * u.floatSpd * 0.6 + u.phase) * u.floatAmp * 0.4;
+            });
+
+            // Pulse
+            pulseScale += (pulseTarget - pulseScale) * 0.12;
+            floaters.forEach(m => m.scale.setScalar(pulseScale * 0.85 + 0.15));
+
+            // Central torus
+            torus.rotation.x = t * 0.28;
+            torus.rotation.y = t * 0.18;
+            torus.rotation.z = t * 0.08;
+            torus.scale.setScalar(pulseScale * 0.92 + 0.08);
+            torusMat.opacity = 0.22 + Math.sin(t * 0.8) * 0.1;
+
+            // Second torus
+            torus2.rotation.z = t * 0.12;
+            torus2.rotation.y = t * 0.06;
+            torus2.scale.setScalar(pulseScale * 0.95 + 0.05);
+
+            // Particles
+            particles.rotation.y += 0.00018;
+            particles.rotation.x += 0.00008;
+
+            // Network group
+            networkGroup.rotation.y += 0.0004;
+            networkGroup.rotation.x += 0.0002;
+
+            // Camera — gentle sway + mouse parallax
+            camera.position.x = smoothMX * 5 + Math.sin(t * 0.08) * 2;
+            camera.position.y = -smoothMY * 3.5 + Math.cos(t * 0.12) * 1.2;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        /* --- Resize --- */
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        /* ========================================
+           Counter Logic
+        ======================================== */
+
+        let count = 0;
+        const valueEl = document.getElementById('counter-value');
+        const btnInc  = document.getElementById('btn-inc');
+        const btnDec  = document.getElementById('btn-dec');
+        const btnReset = document.getElementById('btn-reset');
+
+        function updateDisplay(direction) {
+            valueEl.textContent = count;
+
+            // Color state
+            valueEl.classList.remove('state-positive', 'state-negative', 'state-zero');
+            if (count > 0)      valueEl.classList.add('state-positive');
+            else if (count < 0) valueEl.classList.add('state-negative');
+            else                valueEl.classList.add('state-zero');
+
+            // Bump animation
+            valueEl.classList.remove('bump-up', 'bump-down');
+            // Force reflow so the class re-application triggers the animation
+            void valueEl.offsetWidth;
+            if (direction === 'up')   valueEl.classList.add('bump-up');
+            if (direction === 'down') valueEl.classList.add('bump-down');
+            setTimeout(() => valueEl.classList.remove('bump-up', 'bump-down'), 200);
+
+            // 3D pulse
+            pulseTarget = 1.35;
+            setTimeout(() => { pulseTarget = 1; }, 180);
+
+            // Update ring animation speed based on magnitude
+            const speed = Math.max(4, 22 - Math.abs(count) * 0.8);
+            document.querySelector('.ring-inner').style.animationDuration = speed + 's';
+        }
+
+        function increment() {
+            count++;
+            updateDisplay('up');
+        }
+
+        function decrement() {
+            count--;
+            updateDisplay('down');
+        }
+
+        function zero() {
+            count = 0;
+            updateDisplay(null);
+            showToast('Counter reset');
+        }
+
+        btnInc.addEventListener('click', increment);
+        btnDec.addEventListener('click', decrement);
+        btnReset.addEventListener('click', zero);
+
+        /* --- Keyboard support --- */
+        document.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); increment(); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); decrement(); }
+            else if (e.key === '0' || e.key === 'Escape') { e.preventDefault(); zero(); }
+        });
+
+        /* --- Toast --- */
+        let toastTimer;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('visible');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove('visible'), 1800);
+        }
+    </script>
+</body>
+</html>
